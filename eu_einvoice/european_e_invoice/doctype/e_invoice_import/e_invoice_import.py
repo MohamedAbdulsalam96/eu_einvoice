@@ -263,8 +263,16 @@ def get_xml_bytes(file: Path) -> bytes:
 
 @frappe.whitelist()
 def create_purchase_invoice(source_name, target_doc=None):
-	def post_process(source, target: "PurchaseInvoice"):
+	def post_process(source: "EInvoiceImport", target: "PurchaseInvoice"):
 		target.set_missing_values()
+
+		if source.purchase_order:
+			purchase_order = frappe.get_doc("Purchase Order", source.purchase_order)
+			for pi_item in target.items:
+				for po_item in purchase_order.items:
+					if po_item.item_code == pi_item.item_code:
+						pi_item.purchase_order = source.purchase_order
+						break
 
 	def process_tax_row(source, target, source_parent) -> None:
 		target.charge_type = "Actual"

@@ -90,6 +90,7 @@ class EInvoiceImport(Document):
 			self.guess_supplier()
 			self.guess_company()
 			self.guess_uom()
+			self.guess_item_code()
 
 	def before_submit(self):
 		if not self.supplier:
@@ -214,7 +215,6 @@ class EInvoiceImport(Document):
 
 	def parse_line_item(self, li: "LineItem"):
 		item = self.append("items")
-		supplier = None
 
 		net_rate = float(li.agreement.net.amount._value)
 		basis_qty = float(li.agreement.net.basis_quantity._amount or "1")
@@ -227,12 +227,7 @@ class EInvoiceImport(Document):
 		if item_code and not frappe.db.exists("Item", item_code):
 			item_code = None
 
-		if item.seller_product_id and supplier and not item_code:
-			item_code = frappe.db.get_value(
-				"Item Supplier", {"supplier": supplier, "supplier_part_no": item.seller_product_id}, "parent"
-			)
 		item.item = item_code or None
-
 		item.billed_quantity = flt_or_none(li.delivery.billed_quantity._amount)
 		item.unit_code = str(li.delivery.billed_quantity._unit_code)
 		item.net_rate = rate
@@ -309,6 +304,14 @@ class EInvoiceImport(Document):
 			elif row.item:
 				stock_uom, purchase_uom = frappe.db.get_value("Item", row.item, ["stock_uom", "purchase_uom"])
 				row.uom = purchase_uom or stock_uom
+
+	def guess_item_code(self):
+		for row in self.items:
+			if row.item:
+				continue
+
+			if row.seller_product_id and self.supplier:
+				row.item = frappe.db.get_value("Item Supplier", {"supplier": self.supplier, "supplier_part_no": row.seller_product_id}, "parent")
 
 	def add_seller_product_ids_to_items(self):
 		for row in self.items:

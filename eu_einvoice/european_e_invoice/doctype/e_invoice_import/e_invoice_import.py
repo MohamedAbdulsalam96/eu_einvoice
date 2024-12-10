@@ -13,6 +13,7 @@ from facturx import get_xml_from_pdf
 from frappe import _, _dict, get_site_path
 from frappe.model.document import Document
 from frappe.model.mapper import get_mapped_doc
+from lxml.etree import XMLSyntaxError
 
 from eu_einvoice.schematron import Stylesheet, get_validation_errors
 from eu_einvoice.utils import format_heading
@@ -127,7 +128,10 @@ class EInvoiceImport(Document):
 
 	def read_values_from_einvoice(self) -> None:
 		xml_bytes = self.get_xml_bytes()
-		doc = DrafthorseDocument.parse(xml_bytes)
+		try:
+			doc = DrafthorseDocument.parse(xml_bytes)
+		except XMLSyntaxError:
+			frappe.throw(_("The uploaded file does not contain valid XML data."))
 
 		self._validate_schematron(xml_bytes)
 
@@ -311,7 +315,11 @@ class EInvoiceImport(Document):
 				continue
 
 			if row.seller_product_id and self.supplier:
-				row.item = frappe.db.get_value("Item Supplier", {"supplier": self.supplier, "supplier_part_no": row.seller_product_id}, "parent")
+				row.item = frappe.db.get_value(
+					"Item Supplier",
+					{"supplier": self.supplier, "supplier_part_no": row.seller_product_id},
+					"parent",
+				)
 
 	def add_seller_product_ids_to_items(self):
 		for row in self.items:

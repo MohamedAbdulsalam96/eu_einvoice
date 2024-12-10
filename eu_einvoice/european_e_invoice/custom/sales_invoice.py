@@ -467,15 +467,16 @@ class EInvoiceGenerator:
 				)  # the character "#" is not allowed in the free text
 				if ps.discount_type == "Percentage":
 					discount_days = date_diff(ps.discount_date, self.invoice.posting_date)
-					basis_amount = (
-						ps.payment_amount
-						if round(ps.payment_amount, 2) != round(self.invoice.outstanding_amount, 2)
-						else None
-					)
-					if ps_description:
+					if discount_days < 0:
+						basis_amount = (
+							ps.payment_amount
+							if round(ps.payment_amount, 2) != round(self.invoice.outstanding_amount, 2)
+							else None
+						)
+						if ps_description:
+							ps_description += "\n"
+						ps_description += get_skonto_line(discount_days, ps.discount, basis_amount)
 						ps_description += "\n"
-					ps_description += get_skonto_line(discount_days, ps.discount, basis_amount)
-					ps_description += "\n"
 
 			if ps_description:
 				payment_terms.description = ps_description
@@ -534,6 +535,16 @@ def validate_doc(doc, event):
 			frappe.msgprint(
 				_("{0} row #{1}: Type '{2}' is not supported in e-invoice").format(
 					_(doc.meta.get_label("taxes")), tax_row.idx, _(tax_row.charge_type)
+				),
+				alert=True,
+				indicator="orange",
+			)
+
+	for ps in doc.payment_schedule:
+		if ps.discount_date and date_diff(ps.discount_date, doc.posting_date) < 0:
+			frappe.msgprint(
+				_("{0} row #{1}: Discount Date should be after Posting Date").format(
+					_(doc.meta.get_label("payment_schedule")), ps.idx
 				),
 				alert=True,
 				indicator="orange",

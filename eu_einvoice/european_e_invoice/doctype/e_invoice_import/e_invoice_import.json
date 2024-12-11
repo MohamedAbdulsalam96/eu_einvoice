@@ -9,8 +9,8 @@
   "file_section_section",
   "einvoice",
   "column_break_twhg",
-  "correct_european_invoice",
-  "correct_german_federal_administration_invoice",
+  "profile",
+  "e_invoice_is_correct",
   "validation_details_section",
   "validation_errors",
   "header_section",
@@ -303,23 +303,10 @@
    "read_only": 1
   },
   {
+   "depends_on": "eval:!doc.e_invoice_is_correct",
    "fieldname": "validation_errors",
    "fieldtype": "Text",
    "label": "Validation Errors",
-   "read_only": 1
-  },
-  {
-   "default": "0",
-   "fieldname": "correct_european_invoice",
-   "fieldtype": "Check",
-   "label": "Correct European Invoice",
-   "read_only": 1
-  },
-  {
-   "default": "0",
-   "fieldname": "correct_german_federal_administration_invoice",
-   "fieldtype": "Check",
-   "label": "Correct German Federal Administration Invoice",
    "read_only": 1
   },
   {
@@ -331,6 +318,19 @@
   {
    "fieldname": "column_break_twhg",
    "fieldtype": "Column Break"
+  },
+  {
+   "default": "0",
+   "fieldname": "e_invoice_is_correct",
+   "fieldtype": "Check",
+   "label": "E Invoice Is Correct"
+  },
+  {
+   "fieldname": "profile",
+   "fieldtype": "Read Only",
+   "label": "Profile",
+   "options": "BASIC\nEN 16931\nEXTENDED\nXRECHNUNG",
+   "read_only": 1
   }
  ],
  "index_web_pages_for_search": 1,
@@ -341,7 +341,7 @@
    "link_fieldname": "e_invoice_import"
   }
  ],
- "modified": "2024-11-30 14:01:41.170525",
+ "modified": "2024-12-11 17:54:23.075620",
  "modified_by": "Administrator",
  "module": "European e-Invoice",
  "name": "E Invoice Import",

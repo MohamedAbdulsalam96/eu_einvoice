@@ -1,17 +1,20 @@
-from enum import Enum
 from pathlib import Path
 
 from lxml import objectify
 from saxonche import PySaxonProcessor
 
+from eu_einvoice.utils import EInvoiceProfile
 
-class Stylesheet(str, Enum):
-	EN16931 = "EN16931-CII-validation-preprocessed.xsl"
-	XRECHNUNG = "XRechnung-CII-validation.xsl"
+PROFILE_TO_XSL = {
+	EInvoiceProfile.BASIC: "Factur-X_1.07.2_BASIC.xsl",
+	EInvoiceProfile.EN16931: "EN16931-CII-validation-preprocessed.xsl",
+	EInvoiceProfile.EXTENDED: "Factur-X_1.07.2_EXTENDED.xsl",
+	EInvoiceProfile.XRECHNUNG: "XRechnung-CII-validation.xsl",
+}
 
 
-def get_validation_errors(xml_string: str, stylesheet: Stylesheet) -> list[str]:
-	return get_errors_from_stylesheet(xml_string, stylesheet.value)
+def get_validation_errors(xml_string: str, profile: EInvoiceProfile) -> list[str]:
+	return get_errors_from_stylesheet(xml_string, PROFILE_TO_XSL[profile])
 
 
 def get_errors_from_stylesheet(xml_string: str, stylesheet: str) -> list[str]:
@@ -26,7 +29,7 @@ def extract_failed_asserts(xml: bytes) -> list[str]:
 		"//svrl:failed-assert/svrl:text",
 		namespaces={"svrl": "http://purl.oclc.org/dsdl/svrl"},
 	)
-	return [failed_assert.text for failed_assert in failed_asserts]
+	return [failed_assert.text.strip() for failed_assert in failed_asserts if failed_assert.text]
 
 
 def get_validation_report(xml_string: str, stylesheet_file: str) -> bytes:

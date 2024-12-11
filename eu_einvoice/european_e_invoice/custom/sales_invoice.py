@@ -15,8 +15,8 @@ from frappe.core.utils import html2text
 from frappe.utils.data import date_diff, flt, getdate, to_markdown
 
 from eu_einvoice.common_codes import CommonCodeRetriever
-from eu_einvoice.schematron import Stylesheet, get_validation_errors
-from eu_einvoice.utils import format_heading
+from eu_einvoice.schematron import get_validation_errors
+from eu_einvoice.utils import EInvoiceProfile, get_drafthorse_schema, get_guideline
 
 if TYPE_CHECKING:
 	from erpnext.accounts.doctype.sales_invoice.sales_invoice import SalesInvoice
@@ -65,15 +65,22 @@ def get_einvoice(invoice: str | SalesInvoice) -> bytes:
 
 	company = frappe.get_doc("Company", invoice.company)
 
+	profile = EInvoiceProfile(invoice.einvoice_profile)
 	generator = EInvoiceGenerator(
-		invoice, company, seller_address, buyer_address, seller_contact, buyer_contact
+		profile=profile,
+		invoice=invoice,
+		company=company,
+		seller_address=seller_address,
+		buyer_address=buyer_address,
+		seller_contact=seller_contact,
+		buyer_contact=buyer_contact,
 	)
 	generator.create_einvoice()
 	doc = generator.get_einvoice()
 
 	invoice.run_method("after_einvoice_generation", doc)
 
-	return doc.serialize(schema="FACTUR-X_EXTENDED")
+	return doc.serialize(schema=get_drafthorse_schema(profile))
 
 
 class EInvoiceGenerator:
@@ -81,6 +88,7 @@ class EInvoiceGenerator:
 
 	def __init__(
 		self,
+		profile: EInvoiceProfile,
 		invoice: SalesInvoice,
 		company: Company,
 		seller_address: Address | None = None,
@@ -88,6 +96,7 @@ class EInvoiceGenerator:
 		seller_contact: Contact | None = None,
 		buyer_contact: Contact | None = None,
 	):
+		self.profile = profile
 		self.invoice = invoice
 		self.company = company
 		self.seller_address = seller_address
@@ -143,9 +152,7 @@ class EInvoiceGenerator:
 	def _set_context(self):
 		"""Set default context according to XRechnung 3.0.2"""
 		self.doc.context.business_parameter.id = "urn:fdc:peppol.eu:2017:poacc:billing:01:1.0"
-		self.doc.context.guideline_parameter.id = (
-			"urn:cen.eu:en16931:2017#compliant#urn:xeinkauf.de:kosit:xrechnung_3.0"
-		)
+		self.doc.context.guideline_parameter.id = get_guideline(self.profile)
 
 	def _set_header(self):
 		self.doc.header.id = self.invoice.name
@@ -554,8 +561,7 @@ def validate_doc(doc, event):
 
 
 def validate_einvoice(doc: SalesInvoice):
-	doc.correct_european_invoice = 0
-	doc.correct_german_federal_administration_invoice = 0
+	doc.einvoice_is_correct = 0
 	doc.validation_errors = ""
 
 	try:
@@ -565,25 +571,15 @@ def validate_einvoice(doc: SalesInvoice):
 		return
 
 	try:
-		en_validation_errors = get_validation_errors(xml_string, Stylesheet.EN16931)
-		xr_validation_errors = get_validation_errors(xml_string, Stylesheet.XRECHNUNG)
+		validation_errors = get_validation_errors(xml_string, EInvoiceProfile(doc.einvoice_profile))
 	except Exception:
 		doc.validation_errors = _("Cannot validate E Invoice schematron.")
 		return
 
-	if any(en_validation_errors):
-		doc.validation_errors += format_heading(_("European Invoice")) + "\n".join(en_validation_errors)
+	if any(validation_errors):
+		doc.validation_errors += "\n".join(validation_errors)
 	else:
-		doc.correct_european_invoice = 1
-
-	if any(xr_validation_errors):
-		if doc.validation_errors:
-			doc.validation_errors += "\n"
-		doc.validation_errors += format_heading(_("German Federal Administration Invoice")) + "\n".join(
-			xr_validation_errors
-		)
-	else:
-		doc.correct_german_federal_administration_invoice = 1
+		doc.einvoice_is_correct = 1
 
 
 def get_item_rate(item_tax_template: str | None, taxes: list[dict]) -> float | None:

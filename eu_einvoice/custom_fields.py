@@ -53,6 +53,7 @@ def get_custom_fields():
 				"insert_after": "e_invoice_validation_section",
 				"fieldtype": "Check",
 				"read_only": 1,
+				"print_hide": 1,
 			},
 			{
 				"fieldname": "correct_german_federal_administration_invoice",
@@ -60,6 +61,7 @@ def get_custom_fields():
 				"insert_after": "correct_european_invoice",
 				"fieldtype": "Check",
 				"read_only": 1,
+				"print_hide": 1,
 			},
 			{
 				"fieldname": "validation_errors",
@@ -67,6 +69,7 @@ def get_custom_fields():
 				"insert_after": "correct_german_federal_administration_invoice",
 				"fieldtype": "Text",
 				"read_only": 1,
+				"print_hide": 1,
 			},
 		],
 	}

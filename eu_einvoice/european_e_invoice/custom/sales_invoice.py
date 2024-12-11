@@ -579,7 +579,9 @@ def validate_einvoice(doc: SalesInvoice):
 	if any(xr_validation_errors):
 		if doc.validation_errors:
 			doc.validation_errors += "\n"
-		doc.validation_errors += format_heading(_("German Federal Administration Invoice")) + "\n".join(xr_validation_errors)
+		doc.validation_errors += format_heading(_("German Federal Administration Invoice")) + "\n".join(
+			xr_validation_errors
+		)
 	else:
 		doc.correct_german_federal_administration_invoice = 1
 
@@ -628,9 +630,18 @@ def download_pdf(
 	# Sets frappe.local.response.filecontent to the PDF data
 	frappe_download_pdf(doctype, name, format, doc, no_letterhead, language, letterhead)
 
-	# If the doctype is a Sales Invoice, attach the XML to the PDF
+	# If the doctype is a Sales Invoice, try to attach the XML to the PDF
 	if doctype == "Sales Invoice":
-		frappe.local.response.filecontent = attach_xml_to_pdf(name, frappe.local.response.filecontent)
+		zugferd_pdf = None
+		try:
+			# If creating and attaching XML fails, we still want to return the original PDF.
+			zugferd_pdf = attach_xml_to_pdf(name, frappe.local.response.filecontent)
+		except Exception:
+			frappe.log_error(f"Error attaching XML to PDF for Sales Invoice {name}")
+
+		if zugferd_pdf:
+			# If attaching XML was successful, replace the original PDF with the ZUGFeRD PDF
+			frappe.local.response.filecontent = zugferd_pdf
 
 
 def attach_xml_to_pdf(invoice_id: str, pdf_data: bytes, level: str | None = None) -> bytes:

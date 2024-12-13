@@ -23,7 +23,7 @@ PROFILE_TO_SCHEMA = {
 
 # Map of EInvoiceProfile to GuidelineSpecifiedDocumentContextParameter
 PROFILE_TO_GUIDELINE = {
-	EInvoiceProfile.BASIC: "urn:cen.eu:en16931:2017#conformant#urn:factur-x.eu:1p0:basic",
+	EInvoiceProfile.BASIC: "urn:cen.eu:en16931:2017#compliant#urn:factur-x.eu:1p0:basic",
 	EInvoiceProfile.EN16931: "urn:cen.eu:en16931:2017",
 	EInvoiceProfile.EXTENDED: "urn:cen.eu:en16931:2017#conformant#urn:factur-x.eu:1p0:extended",
 	EInvoiceProfile.XRECHNUNG: "urn:cen.eu:en16931:2017#compliant#urn:xeinkauf.de:kosit:xrechnung_3.0",

@@ -147,6 +147,11 @@ The imported XML is validated against the "EN16931 CII" and "XRechnung CII" sche
 
 Taxes are mapped to "Actual" charges in the **Purchase Invoice**, so that ERPNext does not try to recalculate them.
 
+You can find XML files for testing in the following repositories:
+
+- [EN16931](https://github.com/ConnectingEurope/eInvoicing-EN16931/tree/master/cii/examples)
+- [XRechnung](https://projekte.kosit.org/xrechnung/xrechnung-testsuite/-/tree/master/src/test/business-cases/standard?ref_type=heads) (files ending in `_uncefact.xml`)
+
 ## Add your custom logic
 
 This app provides hooks to add custom logic to the eInvoice creation process:

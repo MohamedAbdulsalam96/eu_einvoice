@@ -15,8 +15,8 @@ from frappe.core.utils import html2text
 from frappe.utils.data import date_diff, flt, getdate, to_markdown
 
 from eu_einvoice.common_codes import CommonCodeRetriever
-from eu_einvoice.schematron import Stylesheet, get_validation_errors
-from eu_einvoice.utils import format_heading
+from eu_einvoice.schematron import get_validation_errors
+from eu_einvoice.utils import EInvoiceProfile, get_drafthorse_schema, get_guideline
 
 if TYPE_CHECKING:
 	from erpnext.accounts.doctype.sales_invoice.sales_invoice import SalesInvoice
@@ -65,15 +65,22 @@ def get_einvoice(invoice: str | SalesInvoice) -> bytes:
 
 	company = frappe.get_doc("Company", invoice.company)
 
+	profile = EInvoiceProfile(invoice.einvoice_profile)
 	generator = EInvoiceGenerator(
-		invoice, company, seller_address, buyer_address, seller_contact, buyer_contact
+		profile=profile,
+		invoice=invoice,
+		company=company,
+		seller_address=seller_address,
+		buyer_address=buyer_address,
+		seller_contact=seller_contact,
+		buyer_contact=buyer_contact,
 	)
 	generator.create_einvoice()
 	doc = generator.get_einvoice()
 
 	invoice.run_method("after_einvoice_generation", doc)
 
-	return doc.serialize(schema="FACTUR-X_EXTENDED")
+	return doc.serialize(schema=get_drafthorse_schema(profile))
 
 
 class EInvoiceGenerator:
@@ -81,6 +88,7 @@ class EInvoiceGenerator:
 
 	def __init__(
 		self,
+		profile: EInvoiceProfile,
 		invoice: SalesInvoice,
 		company: Company,
 		seller_address: Address | None = None,
@@ -88,6 +96,7 @@ class EInvoiceGenerator:
 		seller_contact: Contact | None = None,
 		buyer_contact: Contact | None = None,
 	):
+		self.profile = profile
 		self.invoice = invoice
 		self.company = company
 		self.seller_address = seller_address
@@ -143,9 +152,7 @@ class EInvoiceGenerator:
 	def _set_context(self):
 		"""Set default context according to XRechnung 3.0.2"""
 		self.doc.context.business_parameter.id = "urn:fdc:peppol.eu:2017:poacc:billing:01:1.0"
-		self.doc.context.guideline_parameter.id = (
-			"urn:cen.eu:en16931:2017#compliant#urn:xeinkauf.de:kosit:xrechnung_3.0"
-		)
+		self.doc.context.guideline_parameter.id = get_guideline(self.profile)
 
 	def _set_header(self):
 		self.doc.header.id = self.invoice.name
@@ -192,21 +199,55 @@ class EInvoiceGenerator:
 
 	def _set_seller(self):
 		self.doc.trade.agreement.seller.name = self.invoice.company
-		if self.invoice.company_tax_id:
-			try:
-				seller_tax_id = validate_vat_id(self.invoice.company_tax_id.strip())
-				seller_vat_scheme = "VA"
-			except ValueError:
-				seller_tax_id = self.invoice.company_tax_id.strip()
-				seller_vat_scheme = "FC"
+		self._set_seller_tax_id()
 
-			self.doc.trade.agreement.seller.tax_registrations.add(
-				TaxRegistration(
-					id=(seller_vat_scheme, seller_tax_id),
-				)
+		if self.profile > EInvoiceProfile.BASIC:
+			self._set_seller_contact()
+
+		self._set_seller_electronic_address()
+		self._set_seller_address()
+
+	def _set_seller_tax_id(self):
+		if not self.invoice.company_tax_id:
+			return
+
+		try:
+			seller_tax_id = validate_vat_id(self.invoice.company_tax_id.strip())
+			seller_vat_scheme = "VA"
+		except ValueError:
+			seller_tax_id = self.invoice.company_tax_id.strip()
+			seller_vat_scheme = "FC"
+
+		self.doc.trade.agreement.seller.tax_registrations.add(
+			TaxRegistration(
+				id=(seller_vat_scheme, seller_tax_id),
+			)
+		)
+
+	def _set_seller_address(self):
+		if not self.seller_address:
+			return
+
+		self.doc.trade.agreement.seller.address.line_one = self.seller_address.address_line1
+		self.doc.trade.agreement.seller.address.line_two = self.seller_address.address_line2
+		self.doc.trade.agreement.seller.address.postcode = self.seller_address.pincode
+		self.doc.trade.agreement.seller.address.city_name = self.seller_address.city
+		self.doc.trade.agreement.seller.address.country_id = frappe.db.get_value(
+			"Country", self.seller_address.country, "code"
+		).upper()
+
+	def _set_seller_electronic_address(self):
+		if self.seller_contact and self.seller_contact.email_id:
+			electronic_address = self.seller_contact.email_id
+		else:
+			electronic_address = self.company.email
+
+		if electronic_address:
+			self.doc.trade.agreement.seller.electronic_address.add(
+				URIUniversalCommunication(uri_ID=("EM", electronic_address))
 			)
 
-		seller_contact_email = self.company.email
+	def _set_seller_contact(self):
 		seller_contact_phone = self.company.phone_no
 		if self.seller_contact:
 			self.doc.trade.agreement.seller.contact.person_name = self.seller_contact.full_name
@@ -222,34 +263,55 @@ class EInvoiceGenerator:
 
 		if seller_contact_email:
 			self.doc.trade.agreement.seller.contact.email.address = seller_contact_email
-			self.doc.trade.agreement.seller.electronic_address.add(
-				URIUniversalCommunication(uri_ID=("EM", seller_contact_email))
-			)
 
 		if self.company.fax:
 			self.doc.trade.agreement.seller.contact.fax.number = self.company.fax
 
-		if self.seller_address:
-			self.doc.trade.agreement.seller.address.line_one = self.seller_address.address_line1
-			self.doc.trade.agreement.seller.address.line_two = self.seller_address.address_line2
-			self.doc.trade.agreement.seller.address.postcode = self.seller_address.pincode
-			self.doc.trade.agreement.seller.address.city_name = self.seller_address.city
-			self.doc.trade.agreement.seller.address.country_id = frappe.db.get_value(
-				"Country", self.seller_address.country, "code"
-			).upper()
-
 	def _set_buyer(self):
 		self.doc.trade.agreement.buyer.name = self.invoice.customer_name
 
-		if self.buyer_address:
-			self.doc.trade.agreement.buyer.address.line_one = self.buyer_address.address_line1
-			self.doc.trade.agreement.buyer.address.line_two = self.buyer_address.address_line2
-			self.doc.trade.agreement.buyer.address.postcode = self.buyer_address.pincode
-			self.doc.trade.agreement.buyer.address.city_name = self.buyer_address.city
-			self.doc.trade.agreement.buyer.address.country_id = frappe.db.get_value(
-				"Country", self.buyer_address.country, "code"
-			).upper()
+		self._set_buyer_address()
 
+		if self.profile > EInvoiceProfile.BASIC:
+			self._set_buyer_contact()
+
+		if self.invoice.contact_email:
+			self.doc.trade.agreement.buyer.electronic_address.add(
+				URIUniversalCommunication(uri_ID=("EM", self.invoice.contact_email))
+			)
+
+		self._set_buyer_tax_id()
+
+	def _set_buyer_tax_id(self):
+		if not self.invoice.tax_id:
+			return
+
+		try:
+			customer_tax_id = validate_vat_id(self.invoice.tax_id.strip())
+			customer_vat_scheme = "VA"
+		except ValueError:
+			customer_tax_id = self.invoice.tax_id.strip()
+			customer_vat_scheme = "FC"
+
+		self.doc.trade.agreement.buyer.tax_registrations.add(
+			TaxRegistration(
+				id=(customer_vat_scheme, customer_tax_id),
+			)
+		)
+
+	def _set_buyer_address(self):
+		if not self.buyer_address:
+			return
+
+		self.doc.trade.agreement.buyer.address.line_one = self.buyer_address.address_line1
+		self.doc.trade.agreement.buyer.address.line_two = self.buyer_address.address_line2
+		self.doc.trade.agreement.buyer.address.postcode = self.buyer_address.pincode
+		self.doc.trade.agreement.buyer.address.city_name = self.buyer_address.city
+		self.doc.trade.agreement.buyer.address.country_id = frappe.db.get_value(
+			"Country", self.buyer_address.country, "code"
+		).upper()
+
+	def _set_buyer_contact(self):
 		buyer_contact_phone = self.invoice.contact_mobile
 		if self.buyer_contact:
 			self.doc.trade.agreement.buyer.contact.person_name = self.buyer_contact.full_name
@@ -257,37 +319,22 @@ class EInvoiceGenerator:
 				self.doc.trade.agreement.buyer.contact.department_name = self.buyer_contact.department
 			if self.buyer_contact.phone:
 				buyer_contact_phone = self.buyer_contact.phone
+			if self.invoice.contact_email:
+				self.doc.trade.agreement.buyer.contact.email.address = self.invoice.contact_email
 
 		if buyer_contact_phone:
 			self.doc.trade.agreement.buyer.contact.telephone.number = buyer_contact_phone
-
-		if self.invoice.contact_email:
-			self.doc.trade.agreement.buyer.contact.email.address = self.invoice.contact_email
-			self.doc.trade.agreement.buyer.electronic_address.add(
-				URIUniversalCommunication(uri_ID=("EM", self.invoice.contact_email))
-			)
-
-		if self.invoice.tax_id:
-			try:
-				customer_tax_id = validate_vat_id(self.invoice.tax_id.strip())
-				customer_vat_scheme = "VA"
-			except ValueError:
-				customer_tax_id = self.invoice.tax_id.strip()
-				customer_vat_scheme = "FC"
-
-			self.doc.trade.agreement.buyer.tax_registrations.add(
-				TaxRegistration(
-					id=(customer_vat_scheme, customer_tax_id),
-				)
-			)
 
 	def _add_line_item(self, item: SalesInvoiceItem):
 		li = LineItem()
 		li.document.line_id = str(item.idx)
 		li.product.name = item.item_name
-		li.product.seller_assigned_id = item.item_code
-		li.product.buyer_assigned_id = item.customer_item_code
-		li.product.description = html2text(item.description)
+
+		if self.profile > EInvoiceProfile.BASIC:
+			li.product.seller_assigned_id = item.item_code
+			li.product.buyer_assigned_id = item.customer_item_code
+			li.product.description = html2text(item.description)
+
 		net_amount = flt(item.net_amount, item.precision("net_amount"))
 		li.agreement.net.amount = abs(
 			net_amount
@@ -298,7 +345,7 @@ class EInvoiceGenerator:
 			uom_codes.get([("UOM", item.uom)]),
 		)
 
-		if item.delivery_note:
+		if item.delivery_note and self.profile >= EInvoiceProfile.EXTENDED:
 			li.delivery.delivery_note.issuer_assigned_id = item.delivery_note
 			li.delivery.delivery_note.issue_date_time = frappe.db.get_value(
 				"Delivery Note", item.delivery_note, "posting_date"
@@ -454,29 +501,29 @@ class EInvoiceGenerator:
 				)  # [CII-DT-031] - currencyID should not be present
 
 			if ps.discount and ps.discount_date:
-				# # The following structured information supported by drafthorse seems useful, but the schematron complains:
-				# # [CII-SR-408] - ApplicableTradePaymentDiscountTerms should not be present
-				# payment_terms.discount_terms.basis_date_time = ps.discount_date
-				# payment_terms.discount_terms.basis_amount = ps.payment_amount
-				# if ps.discount_type == "Percentage":
-				# 	payment_terms.discount_terms.calculation_percent = ps.discount
-				# elif ps.discount_type == "Amount":
-				# 	payment_terms.discount_terms.actual_amount = ps.discount
-				ps_description = ps_description.replace(
-					"#", "//"
-				)  # the character "#" is not allowed in the free text
-				if ps.discount_type == "Percentage":
-					discount_days = date_diff(ps.discount_date, self.invoice.posting_date)
-					if discount_days < 0:
-						basis_amount = (
-							ps.payment_amount
-							if round(ps.payment_amount, 2) != round(self.invoice.outstanding_amount, 2)
-							else None
-						)
-						if ps_description:
+				if self.profile == EInvoiceProfile.EXTENDED:
+					payment_terms.discount_terms.basis_date_time = getdate(ps.discount_date)
+					payment_terms.discount_terms.basis_amount = ps.payment_amount
+					if ps.discount_type == "Percentage":
+						payment_terms.discount_terms.calculation_percent = ps.discount
+					elif ps.discount_type == "Amount":
+						payment_terms.discount_terms.actual_amount = ps.discount
+				elif self.profile == EInvoiceProfile.XRECHNUNG:
+					ps_description = ps_description.replace(
+						"#", "//"
+					)  # the character "#" is not allowed in the free text
+					if ps.discount_type == "Percentage":
+						discount_days = date_diff(ps.discount_date, self.invoice.posting_date)
+						if discount_days < 0:
+							basis_amount = (
+								ps.payment_amount
+								if round(ps.payment_amount, 2) != round(self.invoice.outstanding_amount, 2)
+								else None
+							)
+							if ps_description:
+								ps_description += "\n"
+							ps_description += get_skonto_line(discount_days, ps.discount, basis_amount)
 							ps_description += "\n"
-						ps_description += get_skonto_line(discount_days, ps.discount, basis_amount)
-						ps_description += "\n"
 
 			if ps_description:
 				payment_terms.description = ps_description
@@ -554,8 +601,7 @@ def validate_doc(doc, event):
 
 
 def validate_einvoice(doc: SalesInvoice):
-	doc.correct_european_invoice = 0
-	doc.correct_german_federal_administration_invoice = 0
+	doc.einvoice_is_correct = 0
 	doc.validation_errors = ""
 
 	try:
@@ -565,25 +611,15 @@ def validate_einvoice(doc: SalesInvoice):
 		return
 
 	try:
-		en_validation_errors = get_validation_errors(xml_string, Stylesheet.EN16931)
-		xr_validation_errors = get_validation_errors(xml_string, Stylesheet.XRECHNUNG)
+		validation_errors = get_validation_errors(xml_string, EInvoiceProfile(doc.einvoice_profile))
 	except Exception:
 		doc.validation_errors = _("Cannot validate E Invoice schematron.")
 		return
 
-	if any(en_validation_errors):
-		doc.validation_errors += format_heading(_("European Invoice")) + "\n".join(en_validation_errors)
+	if any(validation_errors):
+		doc.validation_errors += "\n".join(validation_errors)
 	else:
-		doc.correct_european_invoice = 1
-
-	if any(xr_validation_errors):
-		if doc.validation_errors:
-			doc.validation_errors += "\n"
-		doc.validation_errors += format_heading(_("German Federal Administration Invoice")) + "\n".join(
-			xr_validation_errors
-		)
-	else:
-		doc.correct_german_federal_administration_invoice = 1
+		doc.einvoice_is_correct = 1
 
 
 def get_item_rate(item_tax_template: str | None, taxes: list[dict]) -> float | None:
@@ -644,18 +680,19 @@ def download_pdf(
 			frappe.local.response.filecontent = zugferd_pdf
 
 
-def attach_xml_to_pdf(invoice_id: str, pdf_data: bytes, level: str | None = None) -> bytes:
+def attach_xml_to_pdf(invoice_id: str, pdf_data: bytes) -> bytes:
 	"""Return the PDF data with the invoice attached as XML.
 
 	Params:
-	        invoice_id: The name of the Sales Invoice.
-	        pdf_data: The PDF data as bytes.
-	        level: Factur-X profile level. One of 'MINIMUM', 'BASIC WL', 'BASIC', 'EN 16931', 'EXTENDED', 'XRECHNUNG'. Defaults to "XRECHNUNG".
+	    invoice_id: The name of the Sales Invoice.
+	    pdf_data: The PDF data as bytes.
 	"""
 	from drafthorse.pdf import attach_xml
 
-	if level is None:
-		level = "XRECHNUNG"
+	level = frappe.db.get_value("Sales Invoice", invoice_id, "einvoice_profile")
+	if level == "XRECHNUNG":
+		# XRECHNUNG does not support embedding into PDF
+		return pdf_data
 
 	xml_bytes = get_einvoice(invoice_id)
 	return attach_xml(pdf_data, xml_bytes, level)

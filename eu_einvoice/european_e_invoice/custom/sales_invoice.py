@@ -680,18 +680,19 @@ def download_pdf(
 			frappe.local.response.filecontent = zugferd_pdf
 
 
-def attach_xml_to_pdf(invoice_id: str, pdf_data: bytes, level: str | None = None) -> bytes:
+def attach_xml_to_pdf(invoice_id: str, pdf_data: bytes) -> bytes:
 	"""Return the PDF data with the invoice attached as XML.
 
 	Params:
-	        invoice_id: The name of the Sales Invoice.
-	        pdf_data: The PDF data as bytes.
-	        level: Factur-X profile level. One of 'MINIMUM', 'BASIC WL', 'BASIC', 'EN 16931', 'EXTENDED', 'XRECHNUNG'. Defaults to "XRECHNUNG".
+	    invoice_id: The name of the Sales Invoice.
+	    pdf_data: The PDF data as bytes.
 	"""
 	from drafthorse.pdf import attach_xml
 
-	if level is None:
-		level = "XRECHNUNG"
+	level = frappe.db.get_value("Sales Invoice", invoice_id, "einvoice_profile")
+	if level == "XRECHNUNG":
+		# XRECHNUNG does not support embedding into PDF
+		return pdf_data
 
 	xml_bytes = get_einvoice(invoice_id)
 	return attach_xml(pdf_data, xml_bytes, level)

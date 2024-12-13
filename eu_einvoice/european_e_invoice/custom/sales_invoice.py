@@ -199,21 +199,55 @@ class EInvoiceGenerator:
 
 	def _set_seller(self):
 		self.doc.trade.agreement.seller.name = self.invoice.company
-		if self.invoice.company_tax_id:
-			try:
-				seller_tax_id = validate_vat_id(self.invoice.company_tax_id.strip())
-				seller_vat_scheme = "VA"
-			except ValueError:
-				seller_tax_id = self.invoice.company_tax_id.strip()
-				seller_vat_scheme = "FC"
+		self._set_seller_tax_id()
 
-			self.doc.trade.agreement.seller.tax_registrations.add(
-				TaxRegistration(
-					id=(seller_vat_scheme, seller_tax_id),
-				)
+		if self.profile > EInvoiceProfile.BASIC:
+			self._set_seller_contact()
+
+		self._set_seller_electronic_address()
+		self._set_seller_address()
+
+	def _set_seller_tax_id(self):
+		if not self.invoice.company_tax_id:
+			return
+
+		try:
+			seller_tax_id = validate_vat_id(self.invoice.company_tax_id.strip())
+			seller_vat_scheme = "VA"
+		except ValueError:
+			seller_tax_id = self.invoice.company_tax_id.strip()
+			seller_vat_scheme = "FC"
+
+		self.doc.trade.agreement.seller.tax_registrations.add(
+			TaxRegistration(
+				id=(seller_vat_scheme, seller_tax_id),
+			)
+		)
+
+	def _set_seller_address(self):
+		if not self.seller_address:
+			return
+
+		self.doc.trade.agreement.seller.address.line_one = self.seller_address.address_line1
+		self.doc.trade.agreement.seller.address.line_two = self.seller_address.address_line2
+		self.doc.trade.agreement.seller.address.postcode = self.seller_address.pincode
+		self.doc.trade.agreement.seller.address.city_name = self.seller_address.city
+		self.doc.trade.agreement.seller.address.country_id = frappe.db.get_value(
+			"Country", self.seller_address.country, "code"
+		).upper()
+
+	def _set_seller_electronic_address(self):
+		if self.seller_contact and self.seller_contact.email_id:
+			electronic_address = self.seller_contact.email_id
+		else:
+			electronic_address = self.company.email
+
+		if electronic_address:
+			self.doc.trade.agreement.seller.electronic_address.add(
+				URIUniversalCommunication(uri_ID=("EM", electronic_address))
 			)
 
-		seller_contact_email = self.company.email
+	def _set_seller_contact(self):
 		seller_contact_phone = self.company.phone_no
 		if self.seller_contact:
 			self.doc.trade.agreement.seller.contact.person_name = self.seller_contact.full_name
@@ -229,34 +263,55 @@ class EInvoiceGenerator:
 
 		if seller_contact_email:
 			self.doc.trade.agreement.seller.contact.email.address = seller_contact_email
-			self.doc.trade.agreement.seller.electronic_address.add(
-				URIUniversalCommunication(uri_ID=("EM", seller_contact_email))
-			)
 
 		if self.company.fax:
 			self.doc.trade.agreement.seller.contact.fax.number = self.company.fax
 
-		if self.seller_address:
-			self.doc.trade.agreement.seller.address.line_one = self.seller_address.address_line1
-			self.doc.trade.agreement.seller.address.line_two = self.seller_address.address_line2
-			self.doc.trade.agreement.seller.address.postcode = self.seller_address.pincode
-			self.doc.trade.agreement.seller.address.city_name = self.seller_address.city
-			self.doc.trade.agreement.seller.address.country_id = frappe.db.get_value(
-				"Country", self.seller_address.country, "code"
-			).upper()
-
 	def _set_buyer(self):
 		self.doc.trade.agreement.buyer.name = self.invoice.customer_name
 
-		if self.buyer_address:
-			self.doc.trade.agreement.buyer.address.line_one = self.buyer_address.address_line1
-			self.doc.trade.agreement.buyer.address.line_two = self.buyer_address.address_line2
-			self.doc.trade.agreement.buyer.address.postcode = self.buyer_address.pincode
-			self.doc.trade.agreement.buyer.address.city_name = self.buyer_address.city
-			self.doc.trade.agreement.buyer.address.country_id = frappe.db.get_value(
-				"Country", self.buyer_address.country, "code"
-			).upper()
+		self._set_buyer_address()
 
+		if self.profile > EInvoiceProfile.BASIC:
+			self._set_buyer_contact()
+
+		if self.invoice.contact_email:
+			self.doc.trade.agreement.buyer.electronic_address.add(
+				URIUniversalCommunication(uri_ID=("EM", self.invoice.contact_email))
+			)
+
+		self._set_buyer_tax_id()
+
+	def _set_buyer_tax_id(self):
+		if not self.invoice.tax_id:
+			return
+
+		try:
+			customer_tax_id = validate_vat_id(self.invoice.tax_id.strip())
+			customer_vat_scheme = "VA"
+		except ValueError:
+			customer_tax_id = self.invoice.tax_id.strip()
+			customer_vat_scheme = "FC"
+
+		self.doc.trade.agreement.buyer.tax_registrations.add(
+			TaxRegistration(
+				id=(customer_vat_scheme, customer_tax_id),
+			)
+		)
+
+	def _set_buyer_address(self):
+		if not self.buyer_address:
+			return
+
+		self.doc.trade.agreement.buyer.address.line_one = self.buyer_address.address_line1
+		self.doc.trade.agreement.buyer.address.line_two = self.buyer_address.address_line2
+		self.doc.trade.agreement.buyer.address.postcode = self.buyer_address.pincode
+		self.doc.trade.agreement.buyer.address.city_name = self.buyer_address.city
+		self.doc.trade.agreement.buyer.address.country_id = frappe.db.get_value(
+			"Country", self.buyer_address.country, "code"
+		).upper()
+
+	def _set_buyer_contact(self):
 		buyer_contact_phone = self.invoice.contact_mobile
 		if self.buyer_contact:
 			self.doc.trade.agreement.buyer.contact.person_name = self.buyer_contact.full_name
@@ -264,37 +319,22 @@ class EInvoiceGenerator:
 				self.doc.trade.agreement.buyer.contact.department_name = self.buyer_contact.department
 			if self.buyer_contact.phone:
 				buyer_contact_phone = self.buyer_contact.phone
+			if self.invoice.contact_email:
+				self.doc.trade.agreement.buyer.contact.email.address = self.invoice.contact_email
 
 		if buyer_contact_phone:
 			self.doc.trade.agreement.buyer.contact.telephone.number = buyer_contact_phone
-
-		if self.invoice.contact_email:
-			self.doc.trade.agreement.buyer.contact.email.address = self.invoice.contact_email
-			self.doc.trade.agreement.buyer.electronic_address.add(
-				URIUniversalCommunication(uri_ID=("EM", self.invoice.contact_email))
-			)
-
-		if self.invoice.tax_id:
-			try:
-				customer_tax_id = validate_vat_id(self.invoice.tax_id.strip())
-				customer_vat_scheme = "VA"
-			except ValueError:
-				customer_tax_id = self.invoice.tax_id.strip()
-				customer_vat_scheme = "FC"
-
-			self.doc.trade.agreement.buyer.tax_registrations.add(
-				TaxRegistration(
-					id=(customer_vat_scheme, customer_tax_id),
-				)
-			)
 
 	def _add_line_item(self, item: SalesInvoiceItem):
 		li = LineItem()
 		li.document.line_id = str(item.idx)
 		li.product.name = item.item_name
-		li.product.seller_assigned_id = item.item_code
-		li.product.buyer_assigned_id = item.customer_item_code
-		li.product.description = html2text(item.description)
+
+		if self.profile > EInvoiceProfile.BASIC:
+			li.product.seller_assigned_id = item.item_code
+			li.product.buyer_assigned_id = item.customer_item_code
+			li.product.description = html2text(item.description)
+
 		net_amount = flt(item.net_amount, item.precision("net_amount"))
 		li.agreement.net.amount = abs(
 			net_amount
@@ -305,7 +345,7 @@ class EInvoiceGenerator:
 			uom_codes.get([("UOM", item.uom)]),
 		)
 
-		if item.delivery_note:
+		if item.delivery_note and self.profile >= EInvoiceProfile.EXTENDED:
 			li.delivery.delivery_note.issuer_assigned_id = item.delivery_note
 			li.delivery.delivery_note.issue_date_time = frappe.db.get_value(
 				"Delivery Note", item.delivery_note, "posting_date"
@@ -461,29 +501,29 @@ class EInvoiceGenerator:
 				)  # [CII-DT-031] - currencyID should not be present
 
 			if ps.discount and ps.discount_date:
-				# # The following structured information supported by drafthorse seems useful, but the schematron complains:
-				# # [CII-SR-408] - ApplicableTradePaymentDiscountTerms should not be present
-				# payment_terms.discount_terms.basis_date_time = ps.discount_date
-				# payment_terms.discount_terms.basis_amount = ps.payment_amount
-				# if ps.discount_type == "Percentage":
-				# 	payment_terms.discount_terms.calculation_percent = ps.discount
-				# elif ps.discount_type == "Amount":
-				# 	payment_terms.discount_terms.actual_amount = ps.discount
-				ps_description = ps_description.replace(
-					"#", "//"
-				)  # the character "#" is not allowed in the free text
-				if ps.discount_type == "Percentage":
-					discount_days = date_diff(ps.discount_date, self.invoice.posting_date)
-					if discount_days < 0:
-						basis_amount = (
-							ps.payment_amount
-							if round(ps.payment_amount, 2) != round(self.invoice.outstanding_amount, 2)
-							else None
-						)
-						if ps_description:
+				if self.profile == EInvoiceProfile.EXTENDED:
+					payment_terms.discount_terms.basis_date_time = getdate(ps.discount_date)
+					payment_terms.discount_terms.basis_amount = ps.payment_amount
+					if ps.discount_type == "Percentage":
+						payment_terms.discount_terms.calculation_percent = ps.discount
+					elif ps.discount_type == "Amount":
+						payment_terms.discount_terms.actual_amount = ps.discount
+				elif self.profile == EInvoiceProfile.XRECHNUNG:
+					ps_description = ps_description.replace(
+						"#", "//"
+					)  # the character "#" is not allowed in the free text
+					if ps.discount_type == "Percentage":
+						discount_days = date_diff(ps.discount_date, self.invoice.posting_date)
+						if discount_days < 0:
+							basis_amount = (
+								ps.payment_amount
+								if round(ps.payment_amount, 2) != round(self.invoice.outstanding_amount, 2)
+								else None
+							)
+							if ps_description:
+								ps_description += "\n"
+							ps_description += get_skonto_line(discount_days, ps.discount, basis_amount)
 							ps_description += "\n"
-						ps_description += get_skonto_line(discount_days, ps.discount, basis_amount)
-						ps_description += "\n"
 
 			if ps_description:
 				payment_terms.description = ps_description

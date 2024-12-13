@@ -1,6 +1,8 @@
 from enum import Enum
+from functools import total_ordering
 
 
+@total_ordering
 class EInvoiceProfile(Enum):
 	"""
 	Profiles according to Factur-X Specification 1.07.2 page 18.
@@ -11,6 +13,16 @@ class EInvoiceProfile(Enum):
 	EN16931 = "EN 16931"
 	EXTENDED = "EXTENDED"
 	XRECHNUNG = "XRECHNUNG"
+
+	def __lt__(self, other):
+		# https://stackoverflow.com/a/39269589
+		order = [
+			EInvoiceProfile.BASIC,
+			EInvoiceProfile.EN16931,
+			EInvoiceProfile.EXTENDED,
+			EInvoiceProfile.XRECHNUNG,
+		]
+		return order.index(self) < order.index(other)
 
 
 # Map of EInvoiceProfile to drafthorse schema name

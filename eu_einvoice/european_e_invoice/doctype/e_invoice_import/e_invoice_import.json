@@ -323,7 +323,8 @@
    "default": "0",
    "fieldname": "e_invoice_is_correct",
    "fieldtype": "Check",
-   "label": "E Invoice Is Correct"
+   "label": "E Invoice Is Correct",
+   "read_only": 1
   },
   {
    "fieldname": "profile",
@@ -341,7 +342,7 @@
    "link_fieldname": "e_invoice_import"
   }
  ],
- "modified": "2024-12-11 17:54:23.075620",
+ "modified": "2024-12-14 13:01:20.243475",
  "modified_by": "Administrator",
  "module": "European e-Invoice",
  "name": "E Invoice Import",

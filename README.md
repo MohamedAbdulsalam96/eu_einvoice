@@ -2,18 +2,16 @@
 
 Create and import e-invoices with ERPNext.
 
-In particular, this app supports reading and writing electronic invoices according to the following standards:
+In particular, this app supports reading and writing electronic invoices according to the UN/CEFACT Cross-Industry-Invoice (CII) standard in the following profiles:
 
-- ZUGFeRD
-- XRechnung
-- Factur-X
-- UN/CEFACT Cross-Industry-Invoice (CII)
-- EN16931
+- BASIC
+- EN 16931
+- EXTENDED
+- XRECHNUNG
+
+All profiles except for "XRECHNUNG" can be embedded in a PDF file, known as ZUGFeRD or Factur-X.
 
 This app cannot read or write UBL invoices. It also does not provide any special way of sending or receiving e-invoices (e.g. Peppol). Instead, it focuses on the conversion between ERPNext's internal data model and the XML format of the above standards.
-
-> [!WARNING]
-> This app is under active development and should **not** yet be used in production environments. Things can **break and change at any time**.
 
 ## Installation
 
@@ -21,9 +19,11 @@ You can install this app using the [bench](https://github.com/frappe/bench) CLI:
 
 ```bash
 cd $PATH_TO_YOUR_BENCH
-bench get-app $URL_OF_THIS_REPO --branch develop
+bench get-app https://github.com/alyf-de/eu_einvoice --branch $MAJOR_VERSION
 bench install-app eu_einvoice
 ```
+
+Please use a branch (`MAJOR_VERSION`) that matches the major version of ERPNext you are using. For example, `version-14` or `version-15`. If you are a developer contributing new features, you'll want to use the `develop` branch instead.
 
 ## Setup
 
@@ -51,13 +51,11 @@ If you work with government customers or similar large organizations, you might 
 
 ### Sales Invoice
 
-During validation of the **Sales Invoice**, the eInvoice is created and validated against the EN16931 and XRechnung schematron, so that you can see any potential problems before submitting the invoice.
-
-![eInvoice validation in Sales Invoice](img/e_invoice_validation.png)
+During validation of the **Sales Invoice**, the potential eInvoice is created and validated against the schematron rules for the selected _E Invoice Profile_, so that you can see any potential problems before submitting it.
 
 To download the XML file (XRechnung), open a **Sales Invoice** and click on "..." > "Download eInvoice".
 
-When you open the print preview of the **Sales Invoice** and click on "PDF", the generated PDF file will have the e-invoice XML embedded. 
+When you open the print preview of the **Sales Invoice** and click on "PDF", the generated PDF file will have the e-invoice XML embedded. An exception is the _E Invoice Profile_ "XRECHNUNG", which is intended to be a plain XML file. In this case, the PDF will not have the XML embedded.
 
 > [!TIP]
 > You can test both XML and PDF+XML files by re-importing them, using the **E Invoice Import** DocType.
@@ -143,7 +141,17 @@ The following fields of the **Sales Invoice** are currently considered for the e
 
 To import a new eInvoice, create a new **E Invoice Import** and upload the XML or PDF file.
 
-The imported XML is validated against the "EN16931 CII" and "XRechnung CII" schematron. You'll see the validation errors in the import's _Validation_ tab. It is still possible to import an invoice, even if there are formal validation errors.
+We extract the E-Invoice Profile and validate the XML against the corresponding schematron rules.
+
+A correct eInvoice will look like this:
+
+![Correct eInvoice](img/correct_import.png)
+
+A problematic eInvoice will look like this. You can see the validation errors in the _Validation Details_ section:
+
+![Problematic eInvoice](img/incorrect_import.png)
+
+It is still possible to import an invoice, even if there are formal validation errors.
 
 Taxes are mapped to "Actual" charges in the **Purchase Invoice**, so that ERPNext does not try to recalculate them.
 

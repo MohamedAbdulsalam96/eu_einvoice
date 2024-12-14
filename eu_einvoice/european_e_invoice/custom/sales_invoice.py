@@ -254,15 +254,12 @@ class EInvoiceGenerator:
 			if self.seller_contact.department:
 				self.doc.trade.agreement.seller.contact.department_name = self.seller_contact.department
 			if self.seller_contact.email_id:
-				seller_contact_email = self.seller_contact.email_id
+				self.doc.trade.agreement.seller.contact.email.address = self.seller_contact.email_id
 			if self.seller_contact.phone:
 				seller_contact_phone = self.seller_contact.phone
 
 		if seller_contact_phone:
 			self.doc.trade.agreement.seller.contact.telephone.number = seller_contact_phone
-
-		if seller_contact_email:
-			self.doc.trade.agreement.seller.contact.email.address = seller_contact_email
 
 		if self.company.fax:
 			self.doc.trade.agreement.seller.contact.fax.number = self.company.fax

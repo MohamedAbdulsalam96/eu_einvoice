@@ -48,17 +48,25 @@ def get_custom_fields():
 				"collapsible": 1,
 			},
 			{
-				"fieldname": "correct_european_invoice",
-				"label": _("Correct European Invoice"),
+				"fieldname": "einvoice_profile",
+				"label": _("E Invoice Profile"),
 				"insert_after": "e_invoice_validation_section",
-				"fieldtype": "Check",
-				"read_only": 1,
+				"fieldtype": "Select",
+				"options": "\n".join(
+					[
+						"BASIC",
+						"EN 16931",
+						"EXTENDED",
+						"XRECHNUNG",
+					]
+				),
+				"default": "EXTENDED",
 				"print_hide": 1,
 			},
 			{
-				"fieldname": "correct_german_federal_administration_invoice",
-				"label": _("Correct German Federal Administration Invoice"),
-				"insert_after": "correct_european_invoice",
+				"fieldname": "einvoice_is_correct",
+				"label": _("E Invoice Is Correct"),
+				"insert_after": "e_invoice_validation_section",
 				"fieldtype": "Check",
 				"read_only": 1,
 				"print_hide": 1,
@@ -66,10 +74,11 @@ def get_custom_fields():
 			{
 				"fieldname": "validation_errors",
 				"label": _("Validation Errors"),
-				"insert_after": "correct_german_federal_administration_invoice",
+				"insert_after": "einvoice_is_correct",
 				"fieldtype": "Text",
 				"read_only": 1,
 				"print_hide": 1,
+				"depends_on": "eval:!doc.einvoice_is_correct",
 			},
 		],
 	}

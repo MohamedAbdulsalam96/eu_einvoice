@@ -15,8 +15,8 @@ from frappe.model.document import Document
 from frappe.model.mapper import get_mapped_doc
 from lxml.etree import XMLSyntaxError
 
-from eu_einvoice.schematron import Stylesheet, get_validation_errors
-from eu_einvoice.utils import format_heading
+from eu_einvoice.schematron import get_validation_errors
+from eu_einvoice.utils import EInvoiceProfile, get_profile
 
 if TYPE_CHECKING:
 	from drafthorse.models.accounting import ApplicableTradeTax
@@ -51,15 +51,15 @@ class EInvoiceImport(Document):
 		buyer_name: DF.Data | None
 		buyer_postcode: DF.Data | None
 		company: DF.Link | None
-		correct_european_invoice: DF.Check
-		correct_german_federal_administration_invoice: DF.Check
 		currency: DF.Link | None
 		due_date: DF.Date | None
+		e_invoice_is_correct: DF.Check
 		einvoice: DF.Attach | None
 		id: DF.Data | None
 		issue_date: DF.Date | None
 		items: DF.Table[EInvoiceItem]
 		payment_terms: DF.Table[EInvoicePaymentTerm]
+		profile: DF.ReadOnly | None
 		purchase_order: DF.Link | None
 		seller_address_line_1: DF.Data | None
 		seller_address_line_2: DF.Data | None
@@ -133,6 +133,7 @@ class EInvoiceImport(Document):
 		except XMLSyntaxError:
 			frappe.throw(_("The uploaded file does not contain valid XML data."))
 
+		self.profile = get_profile(doc.context.guideline_parameter.id._text).value
 		self._validate_schematron(xml_bytes)
 
 		self.id = str(doc.header.id)
@@ -166,8 +167,7 @@ class EInvoiceImport(Document):
 		xml_string = xml_bytes.decode("utf-8")
 
 		try:
-			en_validation_errors = get_validation_errors(xml_string, Stylesheet.EN16931)
-			xr_validation_errors = get_validation_errors(xml_string, Stylesheet.XRECHNUNG)
+			validation_errors = get_validation_errors(xml_string, EInvoiceProfile(self.profile))
 		except Exception:
 			frappe.log_error(
 				title="E Invoice schematron validation",
@@ -181,21 +181,11 @@ class EInvoiceImport(Document):
 			)
 			return
 
-		if any(en_validation_errors):
-			self.correct_european_invoice = 0
-			self.validation_errors += format_heading(_("European Invoice")) + "\n".join(en_validation_errors)
+		if any(validation_errors):
+			self.e_invoice_is_correct = 0
+			self.validation_errors += "\n".join(validation_errors)
 		else:
-			self.correct_european_invoice = 1
-
-		if any(xr_validation_errors):
-			self.correct_german_federal_administration_invoice = 0
-			if self.validation_errors:
-				self.validation_errors += "\n"
-			self.validation_errors += format_heading(_("German Federal Administration Invoice")) + "\n".join(
-				xr_validation_errors
-			)
-		else:
-			self.correct_german_federal_administration_invoice = 1
+			self.e_invoice_is_correct = 1
 
 	def parse_seller(self, seller: "TradeParty"):
 		self.seller_name = str(seller.name)

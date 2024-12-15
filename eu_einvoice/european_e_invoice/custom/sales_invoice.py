@@ -332,9 +332,8 @@ class EInvoiceGenerator:
 			li.product.buyer_assigned_id = item.customer_item_code
 			li.product.description = html2text(item.description)
 
-		net_amount = flt(item.net_amount, item.precision("net_amount"))
 		li.agreement.net.amount = abs(
-			net_amount
+			flt(item.net_rate, item.precision("net_rate"))
 		)  # [BR-27]-The Item net price (BT-146) shall NOT be negative.
 
 		li.delivery.billed_quantity = (

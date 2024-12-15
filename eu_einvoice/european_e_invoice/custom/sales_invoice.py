@@ -16,7 +16,7 @@ from frappe.utils.data import date_diff, flt, getdate, to_markdown
 
 from eu_einvoice.common_codes import CommonCodeRetriever
 from eu_einvoice.schematron import get_validation_errors
-from eu_einvoice.utils import EInvoiceProfile, get_drafthorse_schema, get_guideline
+from eu_einvoice.utils import EInvoiceProfile, get_drafthorse_schema, get_full_name, get_guideline
 
 if TYPE_CHECKING:
 	from erpnext.accounts.doctype.sales_invoice.sales_invoice import SalesInvoice
@@ -250,7 +250,7 @@ class EInvoiceGenerator:
 	def _set_seller_contact(self):
 		seller_contact_phone = self.company.phone_no
 		if self.seller_contact:
-			self.doc.trade.agreement.seller.contact.person_name = self.seller_contact.full_name
+			self.doc.trade.agreement.seller.contact.person_name = get_full_name(self.seller_contact)
 			if self.seller_contact.department:
 				self.doc.trade.agreement.seller.contact.department_name = self.seller_contact.department
 			if self.seller_contact.email_id:
@@ -311,7 +311,7 @@ class EInvoiceGenerator:
 	def _set_buyer_contact(self):
 		buyer_contact_phone = self.invoice.contact_mobile
 		if self.buyer_contact:
-			self.doc.trade.agreement.buyer.contact.person_name = self.buyer_contact.full_name
+			self.doc.trade.agreement.buyer.contact.person_name = get_full_name(self.buyer_contact)
 			if self.buyer_contact.department:
 				self.doc.trade.agreement.buyer.contact.department_name = self.buyer_contact.department
 			if self.buyer_contact.phone:

@@ -1,5 +1,9 @@
 from enum import Enum
 from functools import total_ordering
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+	from frappe.contacts.doctype.contact.contact import Contact
 
 
 @total_ordering
@@ -56,6 +60,10 @@ def get_guideline(profile: EInvoiceProfile) -> str:
 def get_profile(guideline: str) -> EInvoiceProfile:
 	"""Return the profile for the given guideline."""
 	return GUIDELINE_TO_PROFILE.get(guideline)
+
+
+def get_full_name(contact: "Contact") -> str:
+	return f"{contact.first_name or ''} {contact.last_name or ''}".strip()
 
 
 def identity(value):

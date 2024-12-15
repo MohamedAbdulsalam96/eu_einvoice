@@ -104,6 +104,7 @@ class EInvoiceGenerator:
 		self.seller_contact = seller_contact
 		self.buyer_contact = buyer_contact
 		self.doc = None
+		self.item_tax_rates = set()
 
 	def get_einvoice(self) -> Document | None:
 		"""Return the einvoice document as a Python object."""
@@ -360,9 +361,9 @@ class EInvoiceGenerator:
 			# [BR-AE-05] In an Invoice line (BG-25) where the Invoiced item VAT category code (BT-151) is "Reverse charge" the Invoiced item VAT rate (BT-152) shall be 0 (zero).
 			li.settlement.trade_tax.rate_applicable_percent = 0
 		else:
-			li.settlement.trade_tax.rate_applicable_percent = get_item_rate(
-				item.item_tax_template, self.invoice.taxes
-			)
+			item_tax_rate = get_item_rate(item.item_tax_template, self.invoice.taxes)
+			self.item_tax_rates.add(item_tax_rate)
+			li.settlement.trade_tax.rate_applicable_percent = item_tax_rate
 
 		if li.settlement.trade_tax.rate_applicable_percent._value == 0:
 			li.settlement.trade_tax.exemption_reason_code = vat_exemption_reason_codes.get(
@@ -403,7 +404,12 @@ class EInvoiceGenerator:
 				trade_tax.rate_applicable_percent = tax_rate
 
 				if len(self.invoice.taxes) == 1:
+					# We only have one tax, so we can use the net total as basis amount
 					trade_tax.basis_amount = self.invoice.net_total
+					if len(self.item_tax_rates) == 1 and tax_rate == 0:
+						# We only have one tax rate on the line items, but it was not specified on the tax row
+						# so we use the tax rate from the line items.
+						trade_tax.rate_applicable_percent = self.item_tax_rates.pop()
 				elif hasattr(tax, "net_amount"):
 					trade_tax.basis_amount = tax.net_amount
 				elif hasattr(tax, "custom_net_amount"):
